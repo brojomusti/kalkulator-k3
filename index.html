@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Kalkulator Statistik K3</title>
+
+  <!-- Manifest untuk PWA -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192x192.png">
+  <meta name="theme-color" content="#007BFF">
+
+  <!-- Gaya Dasar -->
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f4f4f4;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    h2 {
+      text-align: center;
+    }
+
+    input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background-color: #fffacd;
+    }
+
+    button {
+      padding: 10px 20px;
+      background: #007BFF;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+
+    .results {
+      margin-top: 20px;
+      background: #eef;
+      padding: 15px;
+      border-left: 5px solid #007BFF;
+      border-radius: 5px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #007BFF;
+      color: white;
+    }
+
+    canvas {
+      margin-top: 30px;
+      height: 400px;
+    }
+  </style>
+
+  <!-- Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/1.5.3/jspdf.min.js"></script> 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.3.2/jspdf.plugin.autotable.min.js"></script> 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
+</head>
+<body>
+  <div class="container">
+    <h2>Kalkulator Statistik K3 / HSE</h2>
+
+    <form id="k3Form">
+      <label>Total Tenaga Kerja (orang)</label>
+      <input type="number" id="totalTenagaKerja" required />
+
+      <label>Total Jam Kerja (jam kerja-orang)</label>
+      <input type="number" id="totalJamKerja" required />
+
+      <label>Total Kasus Kecelakaan</label>
+      <input type="number" id="totalKasus" required />
+
+      <label>Total Hari Hilang</label>
+      <input type="number" id="hariHilang" required />
+
+      <label>Konstanta Pembagi (default: 1000000)</label>
+      <input type="number" id="konstanta" value="1000000" required />
+
+      <button type="submit">Hitung</button>
+      <button type="button" onclick="exportToPDF()">Ekspor ke PDF</button>
+    </form>
+
+    <div id="hasil" class="results"></div>
+
+    <h3>Riwayat Perhitungan</h3>
+    <table id="historyTable">
+      <thead>
+        <tr>
+          <th>Tanggal</th>
+          <th>FR</th>
+          <th>SR</th>
+          <th>IR (%)</th>
+          <th>ATLR</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <canvas id="k3Chart" width="400" height="200"></canvas>
+  </div>
+
+  <!-- Script Utama -->
+  <script>
+    let chart = null;
+
+    document.getElementById('k3Form').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      const totalTenagaKerja = parseFloat(document.getElementById('totalTenagaKerja').value);
+      const totalJamKerja = parseFloat(document.getElementById('totalJamKerja').value);
+      const totalKasus = parseFloat(document.getElementById('totalKasus').value);
+      const hariHilang = parseFloat(document.getElementById('hariHilang').value);
+      const konstanta = parseFloat(document.getElementById('konstanta').value);
+
+      if (isNaN(totalTenagaKerja) || isNaN(totalJamKerja) || isNaN(totalKasus) || isNaN(hariHilang) || isNaN(konstanta)) {
+        alert("Silakan isi semua field dengan angka yang valid.");
+        return;
+      }
+
+      let fr = ((totalKasus / totalJamKerja) * konstanta).toFixed(2);
+      let sr = ((hariHilang / totalJamKerja) * konstanta).toFixed(2);
+      let ir = ((totalKasus / totalTenagaKerja) * 100).toFixed(2);
+      let atlr = (hariHilang / totalKasus).toFixed(2);
+
+      document.getElementById('hasil').innerHTML = `
+        <p><strong>Frequency Rate (FR):</strong> ${fr} kasus/${konstanta.toLocaleString()} jam kerja-orang</p>
+        <p><strong>Severity Rate (SR):</strong> ${sr} hari/${konstanta.toLocaleString()} jam kerja-orang</p>
+        <p><strong>Incident Rate (IR):</strong> ${ir}% dari total tenaga kerja</p>
+        <p><strong>Average Time Lost Rate (ATLR):</strong> ${atlr} hari per kasus</p>
+      `;
+
+      const result = {
+        date: new Date().toLocaleDateString(),
+        fr,
+        sr,
+        ir,
+        atlr
+      };
+
+      saveToHistory(result);
+      window.kalkulatorResult = result;
+    });
+
+    function saveToHistory(result) {
+      let history = JSON.parse(localStorage.getItem('k3History') || "[]");
+      history.unshift(result);
+      if (history.length > 10) history.pop();
+      localStorage.setItem('k3History', JSON.stringify(history));
+      renderHistory(history);
+      renderChart(history);
+    }
+
+    function loadHistory() {
+      let history = JSON.parse(localStorage.getItem('k3History') || "[]");
+      renderHistory(history);
+      renderChart(history);
+    }
+
+    function renderHistory(history) {
+      const tbody = document.querySelector('#historyTable tbody');
+      tbody.innerHTML = '';
+      history.forEach(item => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${item.date}</td>
+          <td>${item.fr}</td>
+          <td>${item.sr}</td>
+          <td>${item.ir}</td>
+          <td>${item.atlr}</td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    function exportToPDF() {
+      const result = window.kalkulatorResult;
+      if (!result) {
+        alert("Belum ada hasil perhitungan untuk diekspor.");
+        return;
+      }
+
+      const doc = new jsPDF();
+      const date = new Date().toLocaleDateString();
+
+      // Tabel Input
+      const inputData = [
+        ["Total Tenaga Kerja", `${document.getElementById('totalTenagaKerja').value} orang`],
+        ["Total Jam Kerja", `${document.getElementById('totalJamKerja').value} jam kerja-orang`],
+        ["Total Kasus Kecelakaan", `${document.getElementById('totalKasus').value} kasus`],
+        ["Total Hari Hilang", `${document.getElementById('hariHilang').value} hari`],
+        ["Konstanta Pembagi", document.getElementById('konstanta').value]
+      ];
+
+      doc.autoTable({
+        startY: 20,
+        head: [['Data Input', 'Nilai']],
+        body: inputData,
+        theme: 'grid',
+        styles: { fontSize: 10 },
+        headStyles: { fillColor: [0, 123, 255] }
+      });
+
+      // Tabel Hasil
+      const hasilData = [
+        ["Frequency Rate (FR)", `${result.fr} kasus/${result.konstanta || 1000000} jam kerja-orang`],
+        ["Severity Rate (SR)", `${result.sr} hari/${result.konstanta || 1000000} jam kerja-orang`],
+        ["Incident Rate (IR)", `${result.ir}% dari total tenaga kerja`],
+        ["Average Time Lost Rate (ATLR)", `${result.atlr} hari per kasus`]
+      ];
+
+      doc.text("Hasil Perhitungan", 14, doc.lastAutoTable.finalY + 10);
+      doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 15,
+        head: [['Indikator', 'Nilai']],
+        body: hasilData,
+        theme: 'grid',
+        styles: { fontSize: 10 },
+        headStyles: { fillColor: [0, 123, 255] }
+      });
+
+      doc.save(`Kalkulator_K3_${date}.pdf`);
+    }
+
+    function renderChart(data = null) {
+      if (chart) {
+        chart.destroy();
+      }
+
+      const history = data || JSON.parse(localStorage.getItem('k3History') || "[]");
+
+      if (history.length === 0) return;
+
+      const ctx = document.getElementById('k3Chart').getContext('2d');
+
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: history.map((_, i) => `#${i + 1}`),
+          datasets: [
+            {
+              label: 'Frequency Rate (FR)',
+              data: history.map(i => i.fr),
+              borderColor: '#007BFF',
+              fill: false,
+              tension: 0.3
+            },
+            {
+              label: 'Severity Rate (SR)',
+              data: history.map(i => i.sr),
+              borderColor: '#28A745',
+              fill: false,
+              tension: 0.3
+            },
+            {
+              label: 'Incident Rate (%)',
+              data: history.map(i => i.ir),
+              borderColor: '#FFC107',
+              fill: false,
+              tension: 0.3
+            },
+            {
+              label: 'ATLR (hari)',
+              data: history.map(i => i.atlr),
+              borderColor: '#DC3545',
+              fill: false,
+              tension: 0.3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              position: 'top'
+            },
+            title: {
+              display: true,
+              text: 'Statistik K3 - Grafik Perbandingan'
+            }
+          }
+        }
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadHistory();
+    });
+  </script>
+</body>
+</html>
